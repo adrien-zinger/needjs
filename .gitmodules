@@ -1,0 +1,4 @@
+[submodule "rusty_jsc"]
+	path = rusty_jsc
+	url = git@github.com:adrien-zinger/rusty_jsc.git
+	branch = needjs
