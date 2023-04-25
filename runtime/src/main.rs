@@ -8,7 +8,7 @@ mod fs_promise;
 mod modules;
 mod timeout_api;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() {
     let mut context = JSContext::default();
 
