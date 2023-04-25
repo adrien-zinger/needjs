@@ -23,5 +23,5 @@ pub fn init(context: &mut JSContext) {
     let console_class = maybe_static!(JSClass, || JSClass::create("console", None));
     let mut console = console_class.make_object(context);
     console.set_property(context, "log", JSValue::callback(context, Some(log)));
-    global.set_property(context, "console", (&console).into());
+    global.set_property(context, "console", console.into());
 }

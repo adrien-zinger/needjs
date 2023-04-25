@@ -1,30 +1,59 @@
-use maybe_static::maybe_static;
-use rusty_jsc::{JSClass, JSContext, JSObject, JSPromise, JSValue};
-use rusty_jsc_macros::callback;
-
-use crate::event_loop;
-
-#[callback]
-fn open_promise(
-    mut context: JSContext,
-    _function: JSObject,
-    _this: JSObject,
-    arguments: Vec<JSValue>,
-) -> JSValue {
-    let filename = arguments.first().unwrap().to_string(&context);
-    let promise = JSObject::<JSPromise>::promise(&mut context);
-    event_loop::append(event_loop::Action::OpenFile((filename, promise.clone())));
-    promise.into()
-}
-
-pub fn fs_promise(context: &JSContext) -> JSObject {
-    let fs_promise_class = maybe_static!(JSClass, || JSClass::create("FsPromise", None));
-    let mut fp = fs_promise_class.make_object(context);
-
-    fp.set_property(
-        context,
-        "open",
-        JSValue::callback(context, Some(open_promise)),
-    );
-    fp
+/// Rust side of fsPromise.constants and fs.constants
+pub mod Constants {
+    pub const UV_FS_SYMLINK_DIR: u16 = 1;
+    pub const UV_FS_SYMLINK_JUNCTION: u16 = 2;
+    pub const O_RDONLY: u16 = 0;
+    pub const O_WRONLY: u16 = 1;
+    pub const O_RDWR: u16 = 2;
+    pub const UV_DIRENT_UNKNOWN: u16 = 0;
+    pub const UV_DIRENT_FILE: u16 = 1;
+    pub const UV_DIRENT_DIR: u16 = 2;
+    pub const UV_DIRENT_LINK: u16 = 3;
+    pub const UV_DIRENT_FIFO: u16 = 4;
+    pub const UV_DIRENT_SOCKET: u16 = 5;
+    pub const UV_DIRENT_CHAR: u16 = 6;
+    pub const UV_DIRENT_BLOCK: u16 = 7;
+    pub const S_IFMT: u16 = 61440;
+    pub const S_IFREG: u16 = 32768;
+    pub const S_IFDIR: u16 = 16384;
+    pub const S_IFCHR: u16 = 8192;
+    pub const S_IFBLK: u16 = 24576;
+    pub const S_IFIFO: u16 = 4096;
+    pub const S_IFLNK: u16 = 40960;
+    pub const S_IFSOCK: u16 = 49152;
+    pub const O_CREAT: u16 = 64;
+    pub const O_EXCL: u16 = 128;
+    pub const UV_FS_O_FILEMAP: u16 = 0;
+    pub const O_NOCTTY: u16 = 256;
+    pub const O_TRUNC: u16 = 512;
+    pub const O_APPEND: u16 = 1024;
+    pub const O_DIRECTORY: u16 = 65536;
+    pub const O_NOATIME: u16 = 262144;
+    pub const O_NOFOLLOW: u16 = 131072;
+    pub const O_SYNC: u16 = 1052672;
+    pub const O_DSYNC: u16 = 4096;
+    pub const O_DIRECT: u16 = 16384;
+    pub const O_NONBLOCK: u16 = 2048;
+    pub const S_IRWXU: u16 = 448;
+    pub const S_IRUSR: u16 = 256;
+    pub const S_IWUSR: u16 = 128;
+    pub const S_IXUSR: u16 = 64;
+    pub const S_IRWXG: u16 = 56;
+    pub const S_IRGRP: u16 = 32;
+    pub const S_IWGRP: u16 = 16;
+    pub const S_IXGRP: u16 = 8;
+    pub const S_IRWXO: u16 = 7;
+    pub const S_IROTH: u16 = 4;
+    pub const S_IWOTH: u16 = 2;
+    pub const S_IXOTH: u16 = 1;
+    pub const F_OK: u16 = 0;
+    pub const R_OK: u16 = 4;
+    pub const W_OK: u16 = 2;
+    pub const X_OK: u16 = 1;
+    pub const UV_FS_COPYFILE_EXCL: u16 = 1;
+    pub const COPYFILE_EXCL: u16 = 1;
+    pub const UV_FS_COPYFILE_FICLONE: u16 = 2;
+    pub const COPYFILE_FICLONE: u16 = 2;
+    pub const UV_FS_COPYFILE_FICLONE_FORCE: u16 = 4;
+    pub const COPYFILE_FICLONE_FORCE: u16 = 4;
 }

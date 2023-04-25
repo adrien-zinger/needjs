@@ -7,7 +7,7 @@ use rusty_jsc::{JSClass, JSContext, JSObject, JSValue};
 use rusty_jsc_macros::callback;
 use rusty_jsc_sys::*;
 
-use crate::console;
+use crate::{console, timeout_api};
 
 /*
 
@@ -138,7 +138,7 @@ fn require(
 
             if path == "node:fs/promises" {
                 println!("load fs promises");
-                return crate::fs::fs_promise(&context).into();
+                return crate::fs_promise::fs_promise(&context).into();
             }
 
             // TODO, modify the path in order to behave like node. For example, fs is
@@ -205,6 +205,7 @@ fn internal_init(context: &mut JSContext) {
 
     // init all basics
     console::init(context);
+    timeout_api::init(context);
 }
 
 pub fn init(context: &mut JSContext) {
