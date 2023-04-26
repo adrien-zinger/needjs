@@ -1,21 +1,21 @@
-use std::{
-    sync::{
-        atomic::{AtomicU32, AtomicUsize, Ordering},
-        Arc,
-    },
-    time::Duration,
+use std::sync::{
+    atomic::{AtomicU32, AtomicUsize, Ordering},
+    Arc,
 };
 
 use atomic_wait::{wait, wake_one};
 use maybe_static::maybe_static;
-use rusty_jsc::{JSObject, JSPromise, JSProtected};
+use rusty_jsc::{JSObject, JSPromise};
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
-    oneshot::{Receiver, Sender},
+    oneshot::Sender,
     Mutex,
 };
 
-use crate::{fs_promise::*, timeout_api::exec_timeout};
+use crate::{
+    fs_promise::*,
+    timeout_api::{exec_timeout, TimeoutAction},
+};
 
 pub enum Action {
     /// Open a file (Filename/path, Promise Object)
@@ -31,7 +31,7 @@ pub enum Action {
     AccessFileWithMode((String, u8, JSObject<JSPromise>)),
     /// Contains a setTimeout call callback. (Callback, Duration to sleep,
     /// Cancel trigger Receiver)
-    SetTimeout((JSObject<JSProtected>, Duration, Receiver<()>)),
+    SetTimeout(TimeoutAction),
 
     /// Stop the loop
     Stop(Sender<()>),
@@ -97,7 +97,7 @@ async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
                             // protected value. Leaking the value solve a part
                             // of the problem. (rusty_jsc could give an unsafe
                             // unprotect method later.)
-                            std::mem::forget(a.0);
+                            std::mem::forget(a.callback);
                             break;
                         }
                         // else: count has been incremented in another thread

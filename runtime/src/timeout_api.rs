@@ -33,6 +33,10 @@ impl TimeoutCancelers {
             let _ = cancel_sender.send(());
         }
     }
+
+    fn remove(&mut self, index: u32) {
+        self.cancel_senders.remove(&index);
+    }
 }
 
 /// Should be only used in a single threaded context. Fortunatelly, Javascript
@@ -40,6 +44,14 @@ impl TimeoutCancelers {
 fn get_timeout_cancelers() -> &'static mut TimeoutCancelers {
     let timeouts = maybe_static_unsafe!(TimeoutCancelers);
     timeouts
+}
+
+/// User call of `setTimeout`
+pub struct TimeoutAction {
+    pub index: u32,
+    pub callback: JSObject<JSProtected>,
+    pub time: Duration,
+    pub cancel_receiver: Receiver<()>,
 }
 
 #[callback]
@@ -55,11 +67,12 @@ fn set_timeout(
 
     // manage cancellation
     let (index, cancel_receiver) = get_timeout_cancelers().append();
-    event_loop::append(Action::SetTimeout((
+    event_loop::append(Action::SetTimeout(TimeoutAction {
+        index,
         callback,
-        Duration::from_millis(millis),
+        time: Duration::from_millis(millis),
         cancel_receiver,
-    )));
+    }));
     JSValue::number(&context, index.into())
 }
 
@@ -75,16 +88,14 @@ fn clear_timeout(
     get_timeout_cancelers().cancel(index);
 }
 
-pub async fn exec_timeout(
-    (callback, duration, cancel_receiver): (JSObject<JSProtected>, Duration, Receiver<()>),
-    hold: &Mutex<()>,
-) {
+pub async fn exec_timeout(action: TimeoutAction, hold: &Mutex<()>) {
     tokio::select! {
-        _ = tokio::time::sleep(duration) => {},
-        _ = cancel_receiver => return,
+        _ = tokio::time::sleep(action.time) => {},
+        _ = action.cancel_receiver => return,
     }
     let _ = hold.lock();
-    callback.call_as_function()
+    get_timeout_cancelers().remove(action.index);
+    action.callback.call_as_function();
 }
 
 pub fn init(context: &mut JSContext) {
