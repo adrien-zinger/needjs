@@ -1,6 +1,7 @@
 use maybe_static::maybe_static;
 use rusty_jsc::{JSClass, JSContext, JSObject, JSPromise, JSValue};
 use rusty_jsc_macros::callback;
+use tokio::sync::Mutex;
 
 use crate::event_loop::{self, Action};
 
@@ -17,8 +18,9 @@ fn open(
     promise.into()
 }
 
-pub async fn exec_open((filename, promise): (String, JSObject<JSPromise>)) {
+pub async fn exec_open((filename, promise): (String, JSObject<JSPromise>), hold: &Mutex<()>) {
     let value = tokio::fs::read(filename).await.expect("file not found");
+    let _ = hold.lock().await;
     let context = promise.context();
     promise.resolve(&[JSValue::string(&context, String::from_utf8(value).unwrap()).unwrap()]);
 }
@@ -53,11 +55,12 @@ fn access(
     promise.into()
 }
 
-pub async fn exec_access((filename, promise): (String, JSObject<JSPromise>)) {
+pub async fn exec_access((filename, promise): (String, JSObject<JSPromise>), hold: &Mutex<()>) {
     //let file = tokio::fs::File::open(filename.clone()).await.unwrap();
     //let metadata = file.metadata().await.unwrap();
 
     let value = tokio::fs::read(filename).await.expect("file not found");
+    let _ = hold.lock().await;
     let context = promise.context();
     promise.resolve(&[JSValue::string(&context, String::from_utf8(value).unwrap()).unwrap()]);
 }
