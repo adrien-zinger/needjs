@@ -28,7 +28,7 @@ pub enum Action {
     /// same as AccessFile but with a mode parameter.
     ///
     /// Binded with fsPromise.access(path[,mode]) in javascript.
-    AccessFileWithMode((String, u8, JSObject<JSPromise>)),
+    AccessFileWithMode((String, JSObject<JSPromise>, u8)),
     /// Contains a setTimeout call callback. (Callback, Duration to sleep,
     /// Cancel trigger Receiver)
     SetTimeout(TimeoutAction),
@@ -138,6 +138,9 @@ async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
             match action {
                 Action::OpenFile(a) => deff!(pending_counter, status, exec_open(a, &hold)),
                 Action::AccessFile(a) => deff!(pending_counter, status, exec_access(a, &hold)),
+                Action::AccessFileWithMode(a) => {
+                    deff!(pending_counter, status, exec_access_with_mode(a, &hold))
+                }
                 Action::SetTimeout(a) => {
                     deff!(
                         pending_counter,
@@ -154,6 +157,7 @@ async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
                         std::mem::forget(a.callback)
                     )
                 }
+
                 Action::Stop(sender) => {
                     status.swap(1, Ordering::SeqCst);
                     SYNC_ASYNC_BALANCE.fetch_sub(1, Ordering::SeqCst);
@@ -176,7 +180,6 @@ async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
                         }
                     });
                 }
-                _ => todo!(),
             }
         });
     }

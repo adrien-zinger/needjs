@@ -12,3 +12,4 @@ rusty_jsc_macros = { path = "../rusty_jsc/macros" }
 rusty_jsc_sys = { path = "../rusty_jsc/sys" }
 tokio = { version = "*", features = ["full"] }
 atomic-wait = "*"
+libc = "*"

@@ -2,8 +2,8 @@
 
 We will focus on the asynchronous promise library. It will lead to the development of the internal event loop of the runtime itself and the development of the promise feature in rusty_jsc.
 
-- [] fsPromises.access(path[, mode])
-- [] fsPromises.appendFile(path, data[, options])
+- [] fsPromises.access(path[, mode]) -- development
+- [] fsPromises.appendFile(path, data[, options]) -- require Buffer to be full
 - [] fsPromises.chmod(path, mode)
 - [] fsPromises.chown(path, uid, gid)
 - [] fsPromises.copyFile(src, dest[, mode])
@@ -15,7 +15,7 @@ We will focus on the asynchronous promise library. It will lead to the developme
 - [] fsPromises.lstat(path[, options])
 - [] fsPromises.mkdir(path[, options])
 - [] fsPromises.mkdtemp(prefix[, options])
-- [] fsPromises.open(path, flags[, mode])
+- [] fsPromises.open(path, flags[, mode]) -- development
 - [] fsPromises.opendir(path[, options])
 - [] fsPromises.readdir(path[, options])
 - [] fsPromises.readFile(path[, options])
@@ -32,4 +32,4 @@ We will focus on the asynchronous promise library. It will lead to the developme
 - [] fsPromises.utimes(path, atime, mtime)
 - [] fsPromises.watch(filename[, options])
 - [] fsPromises.writeFile(file, data[, options])
-- [] fsPromises.constants
+- [x] fsPromises.constants -- working currently

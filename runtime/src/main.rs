@@ -4,7 +4,9 @@ use tokio::sync::oneshot::channel;
 
 mod console;
 mod event_loop;
+mod fs;
 mod fs_promise;
+mod fs_write_stream;
 mod modules;
 mod timeout_api;
 
