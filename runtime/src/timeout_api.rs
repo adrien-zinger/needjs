@@ -59,10 +59,10 @@ fn set_timeout(
     context: JSContext,
     _function: JSObject,
     _this: JSObject,
-    arguments: Vec<JSValue>,
-) -> JSValue {
-    let callback = arguments[0].clone().to_protected_object(&context);
-    let time = arguments[1].to_number(&context);
+    arguments: &[JSValue],
+) -> Result<JSValue, JSValue> {
+    let callback = arguments[0].clone().into_protected_object(&context);
+    let time = arguments[1].to_number(&context).unwrap();
     let millis = unsafe { time.to_int_unchecked() };
 
     // manage cancellation
@@ -73,17 +73,12 @@ fn set_timeout(
         time: Duration::from_millis(millis),
         cancel_receiver,
     }));
-    JSValue::number(&context, index.into())
+    Ok(JSValue::number(&context, index.into()))
 }
 
 #[callback]
-fn clear_timeout(
-    context: JSContext,
-    _function: JSObject,
-    _this: JSObject,
-    arguments: Vec<JSValue>,
-) {
-    let index = arguments[0].to_number(&context);
+fn clear_timeout(context: JSContext, _function: JSObject, _this: JSObject, arguments: &[JSValue]) {
+    let index = arguments[0].to_number(&context).unwrap();
     let index = unsafe { index.to_int_unchecked() };
     get_timeout_cancelers().cancel(index);
 }
@@ -95,19 +90,26 @@ pub async fn exec_timeout(action: TimeoutAction, hold: &Mutex<()>) {
     }
     let _ = hold.lock();
     get_timeout_cancelers().remove(action.index);
-    action.callback.call_as_function();
+    action
+        .callback
+        .call_as_function(&action.callback.context(), None, &[])
+        .unwrap();
 }
 
 pub fn init(context: &mut JSContext) {
     let mut global = context.get_global_object();
-    global.set_property(
-        context,
-        "setTimeout",
-        JSValue::callback(context, Some(set_timeout)),
-    );
-    global.set_property(
-        context,
-        "clearTimeout",
-        JSValue::callback(context, Some(clear_timeout)),
-    );
+    global
+        .set_property(
+            context,
+            "setTimeout",
+            JSValue::callback(context, Some(set_timeout)),
+        )
+        .unwrap();
+    global
+        .set_property(
+            context,
+            "clearTimeout",
+            JSValue::callback(context, Some(clear_timeout)),
+        )
+        .unwrap();
 }

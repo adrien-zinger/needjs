@@ -5,7 +5,6 @@ use std::{collections::HashMap, fs::read_to_string};
 use maybe_static::{maybe_static, maybe_static_unsafe};
 use rusty_jsc::{JSClass, JSContext, JSObject, JSValue};
 use rusty_jsc_macros::callback;
-use rusty_jsc_sys::*;
 
 use crate::{console, timeout_api};
 
@@ -111,8 +110,8 @@ fn require(
     context: JSContext,
     _function: JSObject,
     _this: JSObject,
-    arguments: Vec<JSValue>,
-) -> JSValue {
+    arguments: &[JSValue],
+) -> Result<JSValue, JSValue> {
     // Create a Meyer's singleton, unsafe because it can't be used in a multiphreaded
     // context. If a multithread context appear, use maybe_static with an Arc/Mutex.
     let global_objects = maybe_static_unsafe!(HashMap<String, JSObject>);
@@ -134,11 +133,16 @@ fn require(
     */
     if let Some(required) = arguments.first() {
         if required.is_string(&context) {
-            let path = required.to_string(&context);
+            let path = required
+                .to_js_string(&context)
+                .unwrap()
+                .to_string_utf8()
+                .unwrap();
 
             if path == "node:fs/promises" {
                 println!("load fs promises");
-                return crate::fs_promise::fs_promise(&context).into();
+                let ret: JSValue = crate::fs_promise::fs_promise(&context).into();
+                return Ok(ret);
             }
 
             // TODO, modify the path in order to behave like node. For example, fs is
@@ -149,9 +153,10 @@ fn require(
                 let module: JSObject = global_object
                     .get_property(&context, "module")
                     .unwrap()
-                    .to_object(&context);
-
-                return module.get_property(&context, "exports").unwrap();
+                    .to_object(&context)
+                    .unwrap();
+                let ret = Ok(module.get_property(&context, "exports").unwrap());
+                return ret;
             }
 
             let mut new_context = context.split();
@@ -160,25 +165,29 @@ fn require(
                 .get_global_object()
                 .get_property(&new_context, "require")
                 .unwrap()
-                .to_object(&context);
+                .to_object(&context)
+                .unwrap();
             let main_module = context
                 .get_global_object()
                 .get_property(&context, "module")
                 .unwrap();
-            new_require.set_property(&new_context, "main", main_module);
+            new_require
+                .set_property(&new_context, "main", main_module)
+                .unwrap();
             global_objects.insert(path.clone(), new_context.get_global_object());
 
             let script = read_to_string(&path).expect("file not found");
             new_context.evaluate_script(&script, 1).expect("failed");
 
             // Recupération de l'objet export
-            return new_context
+            return Ok(new_context
                 .get_global_object()
                 .get_property(&new_context, "module")
                 .unwrap()
                 .to_object(&new_context)
+                .unwrap()
                 .get_property(&new_context, "exports")
-                .unwrap();
+                .unwrap());
         }
     }
     panic!("error require module")
@@ -194,14 +203,20 @@ fn internal_init(context: &mut JSContext) {
     let mut module = module_class.make_object(context);
     let exports: JSValue = exports_class.make_object(context).into();
 
-    module.set_property(context, "exports", exports.clone());
-    global.set_property(context, "module", module.into());
-    global.set_property(context, "exports", exports);
-    global.set_property(
-        context,
-        "require",
-        JSValue::callback(context, Some(require)),
-    );
+    module
+        .set_property(context, "exports", exports.clone())
+        .unwrap();
+    global
+        .set_property(context, "module", module.into())
+        .unwrap();
+    global.set_property(context, "exports", exports).unwrap();
+    global
+        .set_property(
+            context,
+            "require",
+            JSValue::callback(context, Some(require)),
+        )
+        .unwrap();
 
     // init all basics
     console::init(context);
@@ -215,6 +230,7 @@ pub fn init(context: &mut JSContext) {
     let mut require: JSObject = global
         .get_property(context, "require")
         .unwrap()
-        .to_object(context);
-    require.set_property(context, "main", module);
+        .to_object(context)
+        .unwrap();
+    require.set_property(context, "main", module).unwrap();
 }

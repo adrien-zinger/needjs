@@ -12,55 +12,60 @@ use crate::{
 
 #[callback]
 fn open(
-    mut context: JSContext,
+    context: JSContext,
     _function: JSObject,
     _this: JSObject,
-    arguments: Vec<JSValue>,
-) -> JSValue {
-    let filename = arguments.first().unwrap().to_string(&context);
+    arguments: &[JSValue],
+) -> Result<JSValue, JSValue> {
+    let mut context = context; // TODO: fix macro context mut
+    let filename = arguments.first().unwrap().to_js_string(&context).unwrap();
     let promise = JSObject::<JSPromise>::promise(&mut context);
-    event_loop::append(Action::OpenFile((filename, promise.clone())));
-    promise.into()
+    event_loop::append(Action::OpenFile((filename.into(), promise.clone())));
+    Ok(promise.into())
 }
 
 pub async fn exec_open((filename, promise): (String, JSObject<JSPromise>), hold: &Mutex<()>) {
     let value = tokio::fs::read(filename).await.expect("file not found");
     let _ = hold.lock().await;
     let context = promise.context();
-    promise.resolve(&[JSValue::string(&context, String::from_utf8(value).unwrap()).unwrap()]);
+    promise.resolve(&[JSValue::string(&context, String::from_utf8(value).unwrap())]);
 }
 
 #[callback]
 fn access(
-    mut context: JSContext,
+    context: JSContext,
     _function: JSObject,
     _this: JSObject,
-    arguments: Vec<JSValue>,
-) -> JSValue {
+    arguments: &[JSValue],
+) -> Result<JSValue, JSValue> {
+    let mut context = context;
     // The script call fsPromise.access(). Send a future to the event loop. Two
     // action are possible, with `mode` parameter or without. Both are executed
     // by `exec_access` and `exec_access_with_mode` implemented below.
-    let filename = arguments.first().unwrap().to_string(&context);
+    let filename = arguments.first().unwrap().to_js_string(&context).unwrap();
     let promise = JSObject::<JSPromise>::promise(&mut context);
     let with_mode = arguments.first().and_then(|mode| {
         if mode.is_number(&context) {
-            let value = mode.to_number(&context);
+            let value = mode.to_number(&context).unwrap();
             if value.is_normal() && value < 256.0 {
-                return Some(unsafe { mode.to_number(&context).to_int_unchecked::<u8>() });
+                return Some(unsafe { mode.to_number(&context).unwrap().to_int_unchecked::<u8>() });
             }
         }
         None
     });
     if let Some(mode) = with_mode {
         event_loop::append(Action::AccessFileWithMode((
-            filename,
+            filename.to_string_utf8().unwrap(),
             promise.clone(),
             mode,
         )));
     } else {
-        event_loop::append(Action::AccessFile((filename, promise.clone())));
+        event_loop::append(Action::AccessFile((
+            filename.to_string_utf8().unwrap(),
+            promise.clone(),
+        )));
     }
-    promise.into()
+    Ok(promise.into())
 }
 
 /// Handle and execute asynchronously the access method of fsPromise. Just check
@@ -134,8 +139,11 @@ pub fn fs_promise(context: &JSContext) -> JSObject {
     let fs_promise_class = maybe_static!(JSClass, || JSClass::create("FsPromise", None));
     let mut fp = fs_promise_class.make_object(context);
 
-    fp.set_property(context, "open", JSValue::callback(context, Some(open)));
-    fp.set_property(context, "access", JSValue::callback(context, Some(access)));
-    fp.set_property(context, "constants", constants_object(context).into());
+    fp.set_property(context, "open", JSValue::callback(context, Some(open)))
+        .unwrap();
+    fp.set_property(context, "access", JSValue::callback(context, Some(access)))
+        .unwrap();
+    fp.set_property(context, "constants", constants_object(context).into())
+        .unwrap();
     fp.into()
 }

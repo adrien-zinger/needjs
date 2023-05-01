@@ -22,7 +22,7 @@ async fn main() {
     // TODO: improve all file not found errors
     let script = read_to_string(filename).expect("input file not found");
     if let Err(err) = context.evaluate_script(&script, 1) {
-        println!("{}", err.to_string(&context));
+        println!("{}", err.to_js_string(&context).unwrap());
     }
     let (sender, receiver) = channel();
     event_loop::append(event_loop::Action::Stop(sender));
