@@ -3,12 +3,9 @@ use std::{collections::HashMap, time::Duration};
 use maybe_static::maybe_static_unsafe;
 use rusty_jsc::{JSContext, JSObject, JSProtected, JSValue};
 use rusty_jsc_macros::callback;
-use tokio::sync::{
-    oneshot::{Receiver, Sender},
-    Mutex,
-};
+use tokio::sync::oneshot::{Receiver, Sender};
 
-use crate::event_loop::{self, Action};
+use crate::event_loop::{self, get_hold, Action};
 
 #[derive(Default)]
 struct TimeoutCancelers {
@@ -83,12 +80,12 @@ fn clear_timeout(context: JSContext, _function: JSObject, _this: JSObject, argum
     get_timeout_cancelers().cancel(index);
 }
 
-pub async fn exec_timeout(action: TimeoutAction, hold: &Mutex<()>) {
+pub async fn exec_timeout(action: TimeoutAction) {
     tokio::select! {
         _ = tokio::time::sleep(action.time) => {},
         _ = action.cancel_receiver => return,
     }
-    let _ = hold.lock();
+    let _ = get_hold().lock().await;
     get_timeout_cancelers().remove(action.index);
     action
         .callback

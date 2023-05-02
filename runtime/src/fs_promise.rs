@@ -3,10 +3,9 @@ use std::os::unix::prelude::MetadataExt;
 use maybe_static::maybe_static;
 use rusty_jsc::{JSClass, JSContext, JSObject, JSPromise, JSValue};
 use rusty_jsc_macros::callback;
-use tokio::sync::Mutex;
 
 use crate::{
-    event_loop::{self, Action},
+    event_loop::{self, get_hold, Action},
     fs::constants_object,
 };
 
@@ -24,9 +23,9 @@ fn open(
     Ok(promise.into())
 }
 
-pub async fn exec_open((filename, promise): (String, JSObject<JSPromise>), hold: &Mutex<()>) {
+pub async fn exec_open((filename, promise): (String, JSObject<JSPromise>)) {
     let value = tokio::fs::read(filename).await.expect("file not found");
-    let _ = hold.lock().await;
+    let _ = get_hold().lock().await;
     let context = promise.context();
     promise.resolve(&[JSValue::string(&context, String::from_utf8(value).unwrap())]);
 }
@@ -70,9 +69,9 @@ fn access(
 
 /// Handle and execute asynchronously the access method of fsPromise. Just check
 /// if we can open it.
-pub async fn exec_access((filename, promise): (String, JSObject<JSPromise>), hold: &Mutex<()>) {
+pub async fn exec_access((filename, promise): (String, JSObject<JSPromise>)) {
     let visible = tokio::fs::File::open(filename.clone()).await.is_ok();
-    let _ = hold.lock().await;
+    let _ = get_hold().lock().await;
     if visible {
         promise.resolve(&[]);
     } else {
@@ -82,14 +81,11 @@ pub async fn exec_access((filename, promise): (String, JSObject<JSPromise>), hol
 
 /// Handle and execute asynchronously the access method of fsPromise with mode
 /// parameter.
-pub async fn exec_access_with_mode(
-    (filename, promise, mode): (String, JSObject<JSPromise>, u8),
-    hold: &Mutex<()>,
-) {
+pub async fn exec_access_with_mode((filename, promise, mode): (String, JSObject<JSPromise>, u8)) {
     let file = match tokio::fs::File::open(filename.clone()).await {
         Ok(file) => file,
         _ => {
-            let _ = hold.lock().await;
+            let _ = get_hold().lock().await;
             promise.reject(&[]);
             return;
         }
@@ -122,12 +118,12 @@ pub async fn exec_access_with_mode(
             res
         }
         _ => {
-            let _ = hold.lock().await;
+            let _ = get_hold().lock().await;
             promise.reject(&[]);
             return;
         }
     };
-    let _ = hold.lock().await;
+    let _ = get_hold().lock().await;
     if res {
         promise.resolve(&[]);
     } else {

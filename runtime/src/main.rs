@@ -1,3 +1,4 @@
+use event_loop::get_hold;
 use rusty_jsc::JSContext;
 use std::fs::read_to_string;
 use tokio::sync::oneshot::channel;
@@ -21,9 +22,15 @@ async fn main() {
     let filename = args.get(1).unwrap_or(&default_index);
     // TODO: improve all file not found errors
     let script = read_to_string(filename).expect("input file not found");
-    if let Err(err) = context.evaluate_script(&script, 1) {
-        println!("{}", err.to_js_string(&context).unwrap());
+
+    {
+        // block any asynchronous calls from event loop during main evaluation.
+        let _ = get_hold().lock().await;
+        if let Err(err) = context.evaluate_script(&script, 1) {
+            println!("{}", err.to_js_string(&context).unwrap());
+        }
     }
+
     let (sender, receiver) = channel();
     event_loop::append(event_loop::Action::Stop(sender));
     receiver.await.unwrap();

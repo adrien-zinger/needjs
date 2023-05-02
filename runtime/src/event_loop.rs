@@ -119,33 +119,34 @@ macro_rules! deff {
 
 static SYNC_ASYNC_BALANCE: AtomicU32 = AtomicU32::new(0);
 
-async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
-    // the following mutext is supposed to constain the execution
-    // of the actions to be synchrone at the resolution.
-    let hold = Arc::new(Mutex::new(()));
+/// The following mutext is supposed to constain the execution
+/// of the actions to be synchrone at the resolution.
+pub fn get_hold() -> &'static Mutex<()> {
+    maybe_static!(Mutex::<()>)
+}
 
+async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
     // 0: going to stop, 1..N: number of pending actions in background + 1
     let pending_counter = Arc::new(AtomicUsize::new(1));
     // 0: running, 1: stop requested, 2: going to stop
     let status = Arc::new(AtomicU32::new(0));
 
     while let Some(action) = receiver.recv().await {
-        let hold = hold.clone();
         let pending_counter = pending_counter.clone();
         let status = status.clone();
         tokio::spawn(async move {
             // resolution.
             match action {
-                Action::OpenFile(a) => deff!(pending_counter, status, exec_open(a, &hold)),
-                Action::AccessFile(a) => deff!(pending_counter, status, exec_access(a, &hold)),
+                Action::OpenFile(a) => deff!(pending_counter, status, exec_open(a)),
+                Action::AccessFile(a) => deff!(pending_counter, status, exec_access(a)),
                 Action::AccessFileWithMode(a) => {
-                    deff!(pending_counter, status, exec_access_with_mode(a, &hold))
+                    deff!(pending_counter, status, exec_access_with_mode(a))
                 }
                 Action::SetTimeout(a) => {
                     deff!(
                         pending_counter,
                         status,
-                        exec_timeout(a, &hold),
+                        exec_timeout(a),
                         // count == 0 signify that the event loop will
                         // shutdown very soon. We can suspect that the
                         // global contexts instanciated will also being
