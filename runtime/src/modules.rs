@@ -140,9 +140,11 @@ fn require(
                 .unwrap();
 
             if path == "node:fs/promises" {
-                println!("load fs promises");
-                let ret: JSValue = crate::fs_promise::fs_promise(&context).into();
-                return Ok(ret);
+                return Ok(crate::fs_promise::fs_promise(&context).into());
+            }
+
+            if path == "node:fs" {
+                return Ok(crate::fs::fs(&context).into());
             }
 
             // TODO, modify the path in order to behave like node. For example, fs is

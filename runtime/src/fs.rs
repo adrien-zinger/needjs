@@ -1,4 +1,7 @@
-use rusty_jsc::{JSContext, JSObject, JSObjectGeneric, JSValue};
+use maybe_static::maybe_static;
+use rusty_jsc::{JSClass, JSContext, JSObject, JSObjectGeneric, JSValue};
+
+use crate::fs_write_stream::create_write_stream;
 
 #[allow(unused)]
 
@@ -402,4 +405,17 @@ pub fn constants_object(context: &JSContext) -> JSObject {
     )
     .unwrap();
     obj
+}
+
+pub fn fs(context: &JSContext) -> JSObject {
+    let fs_class = maybe_static!(JSClass, || JSClass::create("FileSystem", None));
+    let mut fp = fs_class.make_object(context);
+
+    fp.set_property(
+        context,
+        "createWriteStream",
+        JSValue::callback(context, Some(create_write_stream)),
+    )
+    .unwrap();
+    fp.into()
 }
