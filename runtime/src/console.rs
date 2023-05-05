@@ -20,7 +20,7 @@ fn log(context: JSContext, _function: JSObject, _this: JSObject, arguments: &[JS
 pub fn init(context: &mut JSContext) {
     let global = &mut context.get_global_object();
     // Define classes
-    let console_class = maybe_static!(JSClass, || JSClass::create("console", None));
+    let console_class = maybe_static!(JSClass, || JSClass::create("console", None, None));
     let mut console = console_class.make_object(context);
     console
         .set_property(context, "log", JSValue::callback(context, Some(log)))

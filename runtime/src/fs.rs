@@ -66,349 +66,85 @@ pub mod constants {
 }
 
 pub fn constants_object(context: &JSContext) -> JSObject {
+    /// Macro to set constant property
+    macro_rules! cst_prop {
+        ($obj: ident, $ctx: ident, $( $name: ident ),*) => {
+            $(
+            $obj.set_property(
+                $ctx,
+                stringify!($name),
+                JSValue::number($ctx, constants::$name as f64),
+            )
+            .unwrap();
+            )*
+        };
+    }
     let mut obj = JSObject::<JSObjectGeneric>::new(context);
-    obj.set_property(
+    cst_prop!(
+        obj,
         context,
-        "UV_FS_SYMLINK_DIR",
-        JSValue::number(context, constants::UV_FS_SYMLINK_DIR as f64),
-    )
-    .unwrap();
-
-    obj.set_property(
-        context,
-        "UV_FS_SYMLINK_JUNCTION",
-        JSValue::number(context, constants::UV_FS_SYMLINK_JUNCTION as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_RDONLY",
-        JSValue::number(context, constants::O_RDONLY as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_WRONLY",
-        JSValue::number(context, constants::O_WRONLY as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_RDWR",
-        JSValue::number(context, constants::O_RDWR as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_DIRENT_UNKNOWN",
-        JSValue::number(context, constants::UV_DIRENT_UNKNOWN as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_DIRENT_FILE",
-        JSValue::number(context, constants::UV_DIRENT_FILE as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_DIRENT_DIR",
-        JSValue::number(context, constants::UV_DIRENT_DIR as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_DIRENT_LINK",
-        JSValue::number(context, constants::UV_DIRENT_LINK as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_DIRENT_FIFO",
-        JSValue::number(context, constants::UV_DIRENT_FIFO as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_DIRENT_SOCKET",
-        JSValue::number(context, constants::UV_DIRENT_SOCKET as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_DIRENT_CHAR",
-        JSValue::number(context, constants::UV_DIRENT_CHAR as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_DIRENT_BLOCK",
-        JSValue::number(context, constants::UV_DIRENT_BLOCK as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IFMT",
-        JSValue::number(context, constants::S_IFMT as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IFREG",
-        JSValue::number(context, constants::S_IFREG as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IFDIR",
-        JSValue::number(context, constants::S_IFDIR as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IFCHR",
-        JSValue::number(context, constants::S_IFCHR as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IFBLK",
-        JSValue::number(context, constants::S_IFBLK as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IFIFO",
-        JSValue::number(context, constants::S_IFIFO as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IFLNK",
-        JSValue::number(context, constants::S_IFLNK as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IFSOCK",
-        JSValue::number(context, constants::S_IFSOCK as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_CREAT",
-        JSValue::number(context, constants::O_CREAT as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_EXCL",
-        JSValue::number(context, constants::O_EXCL as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_FS_O_FILEMAP",
-        JSValue::number(context, constants::UV_FS_O_FILEMAP as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_NOCTTY",
-        JSValue::number(context, constants::O_NOCTTY as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_TRUNC",
-        JSValue::number(context, constants::O_TRUNC as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_APPEND",
-        JSValue::number(context, constants::O_APPEND as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_DIRECTORY",
-        JSValue::number(context, constants::O_DIRECTORY as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_NOATIME",
-        JSValue::number(context, constants::O_NOATIME as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_NOFOLLOW",
-        JSValue::number(context, constants::O_NOFOLLOW as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_SYNC",
-        JSValue::number(context, constants::O_SYNC as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_DSYNC",
-        JSValue::number(context, constants::O_DSYNC as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_DIRECT",
-        JSValue::number(context, constants::O_DIRECT as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "O_NONBLOCK",
-        JSValue::number(context, constants::O_NONBLOCK as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IRWXU",
-        JSValue::number(context, constants::S_IRWXU as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IRUSR",
-        JSValue::number(context, constants::S_IRUSR as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IWUSR",
-        JSValue::number(context, constants::S_IWUSR as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IXUSR",
-        JSValue::number(context, constants::S_IXUSR as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IRWXG",
-        JSValue::number(context, constants::S_IRWXG as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IRGRP",
-        JSValue::number(context, constants::S_IRGRP as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IWGRP",
-        JSValue::number(context, constants::S_IWGRP as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IXGRP",
-        JSValue::number(context, constants::S_IXGRP as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IRWXO",
-        JSValue::number(context, constants::S_IRWXO as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IROTH",
-        JSValue::number(context, constants::S_IROTH as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IWOTH",
-        JSValue::number(context, constants::S_IWOTH as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "S_IXOTH",
-        JSValue::number(context, constants::S_IXOTH as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "F_OK",
-        JSValue::number(context, constants::F_OK as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "R_OK",
-        JSValue::number(context, constants::R_OK as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "W_OK",
-        JSValue::number(context, constants::W_OK as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "X_OK",
-        JSValue::number(context, constants::X_OK as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_FS_COPYFILE_EXCL",
-        JSValue::number(context, constants::UV_FS_COPYFILE_EXCL as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "COPYFILE_EXCL",
-        JSValue::number(context, constants::COPYFILE_EXCL as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_FS_COPYFILE_FICLONE",
-        JSValue::number(context, constants::UV_FS_COPYFILE_FICLONE as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "COPYFILE_FICLONE",
-        JSValue::number(context, constants::COPYFILE_FICLONE as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "UV_FS_COPYFILE_FICLONE_FORCE",
-        JSValue::number(context, constants::UV_FS_COPYFILE_FICLONE_FORCE as f64),
-    )
-    .unwrap();
-    obj.set_property(
-        context,
-        "COPYFILE_FICLONE_FORCE",
-        JSValue::number(context, constants::COPYFILE_FICLONE_FORCE as f64),
-    )
-    .unwrap();
+        UV_FS_SYMLINK_DIR,
+        UV_FS_SYMLINK_JUNCTION,
+        O_RDONLY,
+        O_WRONLY,
+        O_RDWR,
+        UV_DIRENT_UNKNOWN,
+        UV_DIRENT_FILE,
+        UV_DIRENT_DIR,
+        UV_DIRENT_LINK,
+        UV_DIRENT_FIFO,
+        UV_DIRENT_SOCKET,
+        UV_DIRENT_CHAR,
+        UV_DIRENT_BLOCK,
+        S_IFMT,
+        S_IFREG,
+        S_IFDIR,
+        S_IFCHR,
+        S_IFBLK,
+        S_IFIFO,
+        S_IFLNK,
+        S_IFSOCK,
+        O_CREAT,
+        O_EXCL,
+        UV_FS_O_FILEMAP,
+        O_NOCTTY,
+        O_TRUNC,
+        O_APPEND,
+        O_DIRECTORY,
+        O_NOATIME,
+        O_NOFOLLOW,
+        O_SYNC,
+        O_DSYNC,
+        O_DIRECT,
+        O_NONBLOCK,
+        S_IRWXU,
+        S_IRUSR,
+        S_IWUSR,
+        S_IXUSR,
+        S_IRWXG,
+        S_IRGRP,
+        S_IWGRP,
+        S_IXGRP,
+        S_IRWXO,
+        S_IROTH,
+        S_IWOTH,
+        S_IXOTH,
+        F_OK,
+        R_OK,
+        W_OK,
+        X_OK,
+        UV_FS_COPYFILE_EXCL,
+        COPYFILE_EXCL,
+        UV_FS_COPYFILE_FICLONE,
+        COPYFILE_FICLONE,
+        UV_FS_COPYFILE_FICLONE_FORCE,
+        COPYFILE_FICLONE_FORCE
+    );
     obj
 }
 
 pub fn fs(context: &JSContext) -> JSObject {
-    let fs_class = maybe_static!(JSClass, || JSClass::create("FileSystem", None));
+    let fs_class = maybe_static!(JSClass, || JSClass::create("FileSystem", None, None));
     let mut fp = fs_class.make_object(context);
 
     fp.set_property(

@@ -32,7 +32,7 @@ pub enum Action {
     /// This action is currently used when JS calls a `fs.createWriteStream`.
     ///
     /// Note: Look at fs_write_stream file for further documentation.
-    CreateWSFile(String, u32),
+    CreateWSFile(String, Arc<Mutex<WSFile>>),
     /// Open a file (Filename/path, Promise Object)
     OpenFile((String, JSObject<JSPromise>)),
     /// Contains a setTimeout call callback. (Callback, Duration to sleep,
@@ -40,6 +40,8 @@ pub enum Action {
     SetTimeout(TimeoutAction),
     /// Write a String in a WriteStream file
     WriteInWSFile(Arc<Mutex<WSFile>>, String, Arc<AtomicU32>),
+    /// Close a WriteStream file. Result of the javascript call of
+    /// `writer.close()`
     CloseWSFile(
         Arc<Mutex<WSFile>>,
         Arc<std::sync::Mutex<WriteStreamCallbacks>>,
@@ -161,8 +163,8 @@ async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
                         exec_close(file, callbacks, context, pending)
                     )
                 }
-                Action::CreateWSFile(file, id) => {
-                    deff!(pending_counter, status, exec_create_file(file, id))
+                Action::CreateWSFile(path, ws_file) => {
+                    deff!(pending_counter, status, exec_create_file(path, ws_file))
                 }
                 Action::OpenFile(a) => deff!(pending_counter, status, exec_open(a)),
                 Action::SetTimeout(a) => {
@@ -191,6 +193,7 @@ async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
                 Action::Stop(sender) => {
                     status.swap(1, Ordering::SeqCst);
                     SYNC_ASYNC_BALANCE.fetch_sub(1, Ordering::SeqCst);
+                    // TODO: spawn that and wait with tokio tools!!
                     std::thread::spawn(move || loop {
                         // Note: there is maybe an issue here if tokio spaw the
                         // end before all the other futures in a small script.

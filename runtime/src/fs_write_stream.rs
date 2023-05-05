@@ -2,31 +2,20 @@ use maybe_static::maybe_static;
 use rusty_jsc::{
     callback, JSClass, JSContext, JSObject, JSObjectGenericClass, JSProtected, JSValue,
 };
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc,
 };
 use tokio::{fs::File, io::AsyncWriteExt, sync::Mutex};
 
 use crate::event_loop::{self, get_hold, Action};
 
 /// A WriteStream file can be a File, when the event loop has resolved the
-/// file creation. Or an u32 ID, when the object is waiting for the file
+/// file creation. Or Waiting, when the object is waiting for the file
 /// to open.
-///
-/// When this WriteStream is created, we append to the event loop the CreateFile
-/// action. This will, of course, asynchronously cause the creation of the file,
-/// but we don't modify the JSObject because we don't want to store it. Instead,
-/// we use a static Hashmap to store the file with the given ID as a key. The ID
-/// is just a value incremented each time we require a WriteStream. However, we
-/// don't want to look in the Hashmap each time we need the file, since the
-/// first time allow us to just move it from the Hashmap to that enum.
 pub enum WSFile {
     File(File),
-    ID(u32),
+    Waiting,
     Closed,
 }
 
@@ -39,6 +28,22 @@ pub struct WriteStream {
     pending: Arc<AtomicU32>,
 }
 
+// If I add the following line, I can see the output:
+//
+// > drop waiting!
+// > drop file!
+// > drop closed!
+//
+// impl Drop for WSFile {
+//     fn drop(&mut self) {
+//         match self {
+//             WSFile::File(_) => println!("drop file!"),
+//             WSFile::Waiting => println!("drop waiting!"),
+//             WSFile::Closed => println!("drop closed!"),
+//         }
+//     }
+// }
+
 #[derive(Default)]
 pub struct WriteStreamCallbacks {
     /// On close callback.
@@ -49,12 +54,11 @@ pub struct WriteStreamCallbacks {
 
 /// Get WriteStreamClass
 fn get_write_stream_class() -> &'static JSClass {
-    maybe_static!(JSClass, || JSClass::create("WriteStream", None))
-}
-
-/// Get asynchronously opened file hashmap
-fn get_async_opened_files() -> &'static Mutex<HashMap<u32, File>> {
-    maybe_static!(Mutex::<HashMap::<u32, File>>)
+    maybe_static!(JSClass, || JSClass::create(
+        "WriteStream",
+        None,
+        Some(destructor)
+    ))
 }
 
 // Asynchronous functions called by the event loop.
@@ -62,9 +66,9 @@ fn get_async_opened_files() -> &'static Mutex<HashMap<u32, File>> {
 // * WriteInFile => exec_write_str
 // * CloseFile => exec_close
 
-pub async fn exec_create_file(path: String, id: u32) {
+pub async fn exec_create_file(path: String, ws_file: Arc<Mutex<WSFile>>) {
     let file = File::create(path).await.unwrap(); // TODO: signal an error (keep a callback)
-    get_async_opened_files().lock().await.insert(id, file);
+    *ws_file.lock().await = WSFile::File(file);
 }
 
 pub async fn exec_write_str(ws_file: Arc<Mutex<WSFile>>, value: String, pending: Arc<AtomicU32>) {
@@ -76,20 +80,13 @@ pub async fn exec_write_str(ws_file: Arc<Mutex<WSFile>>, value: String, pending:
                 pending.fetch_sub(1, Ordering::Release);
                 return;
             }
-            WSFile::ID(id) => {
-                if let Some(mut file) = get_async_opened_files().lock().await.remove(id) {
-                    file.write_all(value.as_bytes()).await.unwrap();
-                    *wsf = WSFile::File(file);
-                    pending.fetch_sub(1, Ordering::Release);
-                    return;
-                }
-            }
+            WSFile::Waiting => { /* Nothing to do */ }
             WSFile::Closed => {
                 panic!("cannot be closed with pending write requests")
             }
         }
     }
-    // No file found, retry
+    // No file found, retry later
     event_loop::append(Action::WriteInWSFile(ws_file, value, pending));
 }
 
@@ -106,6 +103,7 @@ async fn call_close_callbacks(
         close.call_as_function(&context, None, &[]).unwrap();
     }
 }
+
 pub async fn exec_close(
     ws_file: Arc<Mutex<WSFile>>,
     callbacks: Arc<std::sync::Mutex<WriteStreamCallbacks>>,
@@ -120,44 +118,14 @@ pub async fn exec_close(
                 call_close_callbacks(callbacks, context).await;
                 return;
             }
-            WSFile::ID(id) => {
-                if get_async_opened_files().lock().await.remove(id).is_some() {
-                    *wsf = WSFile::Closed;
-                    call_close_callbacks(callbacks, context).await;
-                    return;
-                } else {
-                }
-            }
+            WSFile::Waiting => { /* Nothing to do */ }
             WSFile::Closed => {
-                return; /* Nothing to do */
+                return; /* Already closed ??? warning */
             }
         }
     }
-    // No file found, retry
+    // No file found or pending action, retry later
     event_loop::append(Action::CloseWSFile(ws_file, callbacks, context, pending));
-}
-
-fn next() -> u32 {
-    use std::sync::atomic::Ordering::*;
-    static COUNTER: AtomicU32 = AtomicU32::new(0);
-
-    let mut curr = COUNTER.load(Acquire);
-    let mut next = if curr == u32::MAX {
-        // ??? is a modulo better here?
-        0
-    } else {
-        curr + 1
-    };
-    while let Err(c) = COUNTER.compare_exchange(curr, next, Acquire, Acquire) {
-        curr = c;
-        next = if curr == u32::MAX {
-            // ??? is a modulo better here?
-            0
-        } else {
-            curr + 1
-        };
-    }
-    curr
 }
 
 impl WriteStream {
@@ -165,8 +133,8 @@ impl WriteStream {
     /// created (if it does not exist) or truncated (if it exists).
     pub fn make(context: &JSContext, path: String) -> JSObject<JSObjectGenericClass> {
         let mut object = get_write_stream_class().make_object(context);
-        let id = next();
-        event_loop::append(event_loop::Action::CreateWSFile(path, id));
+        let file = Arc::new(Mutex::new(WSFile::Waiting));
+        event_loop::append(event_loop::Action::CreateWSFile(path, file.clone()));
         object
             .set_property(context, "on", JSValue::callback(context, Some(on)))
             .unwrap();
@@ -178,7 +146,7 @@ impl WriteStream {
             .unwrap();
         if object
             .set_private_data(WriteStream {
-                file: Arc::new(Mutex::new(WSFile::ID(id))),
+                file,
                 callbacks: Default::default(),
                 pending: Default::default(),
             })
@@ -195,6 +163,15 @@ impl WriteStream {
     ) -> Result<&'a mut WriteStream, JSValue> {
         let object = object.try_as_mut_object_class(context, get_write_stream_class())?;
         let ws: &mut WriteStream = unsafe { &mut *object.get_private_data().unwrap() };
+        Ok(ws)
+    }
+
+    pub fn try_take_from_object(object: &mut JSObject) -> Result<Box<WriteStream>, JSValue> {
+        let object = unsafe { object.as_mut_object_class_unchecked() };
+        let ws: Box<WriteStream> = unsafe { Box::from_raw(object.get_private_data().unwrap()) };
+        object
+            .set_private_data(std::ptr::null_mut() as *mut ())
+            .unwrap();
         Ok(ws)
     }
 
@@ -231,6 +208,10 @@ impl WriteStream {
             self.pending.clone(),
         ))
     }
+}
+
+pub unsafe extern "C" fn destructor(this: rusty_jsc::private::JSObjectRef) {
+    WriteStream::try_take_from_object(&mut JSObject::from(this)).unwrap();
 }
 
 #[callback]
@@ -284,7 +265,6 @@ fn close(context: JSContext, _function: JSObject, mut this: JSObject, _arguments
 /// supplied callback once the data has been fully handled. If an error occurs,
 /// the callback may or may not be called with the error as its first argument.
 /// To reliably detect write errors, add a listener for the 'error' event.
-///
 fn write(
     context: JSContext,
     _function: JSObject,
@@ -326,7 +306,5 @@ write('hello', () => {
 });
 
 A Writable stream in object mode will always ignore the encoding argument.
-
-
 
  */

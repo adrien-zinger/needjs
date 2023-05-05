@@ -132,7 +132,7 @@ pub async fn exec_access_with_mode((filename, promise, mode): (String, JSObject<
 }
 
 pub fn fs_promise(context: &JSContext) -> JSObject {
-    let fs_promise_class = maybe_static!(JSClass, || JSClass::create("FsPromise", None));
+    let fs_promise_class = maybe_static!(JSClass, || JSClass::create("FsPromise", None, None));
     let mut fp = fs_promise_class.make_object(context);
 
     fp.set_property(context, "open", JSValue::callback(context, Some(open)))

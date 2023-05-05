@@ -198,8 +198,8 @@ fn require(
 fn internal_init(context: &mut JSContext) {
     let global = &mut context.get_global_object();
 
-    let module_class = maybe_static!(JSClass, || JSClass::create("module", None));
-    let exports_class = maybe_static!(JSClass, || JSClass::create("exports", None));
+    let module_class = maybe_static!(JSClass, || JSClass::create("module", None, None));
+    let exports_class = maybe_static!(JSClass, || JSClass::create("exports", None, None));
 
     // module / exports
     let mut module = module_class.make_object(context);
