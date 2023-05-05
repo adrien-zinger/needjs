@@ -5,7 +5,7 @@ use std::sync::{
 
 use atomic_wait::{wait, wake_one};
 use maybe_static::maybe_static;
-use rusty_jsc::{JSObject, JSPromise};
+use rusty_jsc::{JSContext, JSObject, JSPromise};
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
     oneshot::Sender,
@@ -14,12 +14,11 @@ use tokio::sync::{
 
 use crate::{
     fs_promise::*,
+    fs_write_stream::{exec_close, exec_create_file, exec_write_str, WSFile, WriteStreamCallbacks},
     timeout_api::{exec_timeout, TimeoutAction},
 };
 
 pub enum Action {
-    /// Open a file (Filename/path, Promise Object)
-    OpenFile((String, JSObject<JSPromise>)),
     /// Check file accessibility (Filename/path, Promise Object).
     ///
     /// Binded with fsPromise.access(path[,mode]) in javascript.
@@ -29,10 +28,24 @@ pub enum Action {
     ///
     /// Binded with fsPromise.access(path[,mode]) in javascript.
     AccessFileWithMode((String, JSObject<JSPromise>, u8)),
+    /// Commands the file creation in write only mode like Path::create does.
+    /// This action is currently used when JS calls a `fs.createWriteStream`.
+    ///
+    /// Note: Look at fs_write_stream file for further documentation.
+    CreateWSFile(String, u32),
+    /// Open a file (Filename/path, Promise Object)
+    OpenFile((String, JSObject<JSPromise>)),
     /// Contains a setTimeout call callback. (Callback, Duration to sleep,
     /// Cancel trigger Receiver)
     SetTimeout(TimeoutAction),
-
+    /// Write a String in a WriteStream file
+    WriteInWSFile(Arc<Mutex<WSFile>>, String, Arc<AtomicU32>),
+    CloseWSFile(
+        Arc<Mutex<WSFile>>,
+        Arc<std::sync::Mutex<WriteStreamCallbacks>>,
+        JSContext,
+        Arc<AtomicU32>,
+    ),
     /// Stop the loop
     Stop(Sender<()>),
 }
@@ -137,11 +150,21 @@ async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
         tokio::spawn(async move {
             // resolution.
             match action {
-                Action::OpenFile(a) => deff!(pending_counter, status, exec_open(a)),
                 Action::AccessFile(a) => deff!(pending_counter, status, exec_access(a)),
                 Action::AccessFileWithMode(a) => {
                     deff!(pending_counter, status, exec_access_with_mode(a))
                 }
+                Action::CloseWSFile(file, callbacks, context, pending) => {
+                    deff!(
+                        pending_counter,
+                        status,
+                        exec_close(file, callbacks, context, pending)
+                    )
+                }
+                Action::CreateWSFile(file, id) => {
+                    deff!(pending_counter, status, exec_create_file(file, id))
+                }
+                Action::OpenFile(a) => deff!(pending_counter, status, exec_open(a)),
                 Action::SetTimeout(a) => {
                     deff!(
                         pending_counter,
@@ -158,7 +181,13 @@ async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
                         std::mem::forget(a.callback)
                     )
                 }
-
+                Action::WriteInWSFile(ws_file, value, pending) => {
+                    deff!(
+                        pending_counter,
+                        status,
+                        exec_write_str(ws_file, value, pending)
+                    )
+                }
                 Action::Stop(sender) => {
                     status.swap(1, Ordering::SeqCst);
                     SYNC_ASYNC_BALANCE.fetch_sub(1, Ordering::SeqCst);
