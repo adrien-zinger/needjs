@@ -3,13 +3,12 @@ use std::sync::{
     Arc,
 };
 
-use atomic_wait::{wait, wake_one};
 use maybe_static::maybe_static;
 use rusty_jsc::{JSContext, JSObject, JSPromise};
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
     oneshot::Sender,
-    Mutex,
+    Mutex, Notify,
 };
 
 use crate::{
@@ -61,24 +60,12 @@ pub enum Action {
 // 1. An action sended by a file should contains the way to solve it. Example:
 // SetTimeout is sended from timeout_api.rs, which contains exec_timeout that is
 // the function that resolve the timeout calling the callback, etc.
-// 2. Use some macro to reduce the code repetition. Two helpers are available,
-// the first one is `sync`, that will lock the first identification given. It should be
-// the `hold` variable in any case. Then, `sync` will await for the future given
-// as second parameter.
+// 2. Use some macro to reduce the code repetition. It should be
+// the `hold` variable in any case.
 
-#[allow(unused)]
-macro_rules! sync {
-    ($h: ident, $e: expr) => {{
-        let _ = $h.lock().await;
-        $e.await;
-        SYNC_ASYNC_BALANCE.fetch_sub(1, Ordering::SeqCst);
-    }};
-}
-
-// The second macro to use is deff, shortcut of deffered. The role of the
-// deffered action is to run something in background, adding a pending action to
-// wait before stopping the executable, and synchronize just before the
-// execution.
+// The macro to use is `deff!` (shortcut of deffered). The role of the deffered
+// action is to run something in background, adding a pending action to wait
+// before stopping the executable, and synchronize just before the execution.
 
 // There can't a instant where the event loop is running out and
 // something is running in background. That's why, if the action is managed
@@ -94,26 +81,27 @@ macro_rules! sync {
 // more to do.
 // 3. But, in fact, there is something more to do. However, it's too late, the
 // action need to dismiss.
+
 macro_rules! deff {
-    ($pending_counter: ident, $status: ident, $e: expr, $d: expr) => {{
+    ($e: expr, $d: expr) => {{
         loop {
-            let count = $pending_counter.load(Ordering::SeqCst);
+            let count = PENDING_COUNTER.load(Ordering::SeqCst);
             if count > 0
-                && $pending_counter
+                && PENDING_COUNTER
                     .compare_exchange(count, count + 1, Ordering::SeqCst, Ordering::SeqCst)
                     .is_ok()
             {
                 $e.await;
-                let prev = $pending_counter.fetch_sub(1, Ordering::SeqCst);
+                let prev = PENDING_COUNTER.fetch_sub(1, Ordering::SeqCst);
                 if prev == 2
-                    && $status.load(Ordering::SeqCst) == 1
+                    && STATUS.load(Ordering::SeqCst) == 1
                     && SYNC_ASYNC_BALANCE.load(Ordering::SeqCst) == 1
-                    && $pending_counter
+                    && PENDING_COUNTER
                         .compare_exchange(1, 0, Ordering::SeqCst, Ordering::Acquire)
                         .is_ok()
                 {
-                    $status.swap(2, Ordering::Acquire);
-                    wake_one(&*$status);
+                    STATUS.swap(2, Ordering::Acquire);
+                    STATUS_NOTIFIER.notify_one();
                 }
 
                 break;
@@ -125,13 +113,26 @@ macro_rules! deff {
             // --> retry.
         }
         SYNC_ASYNC_BALANCE.fetch_sub(1, Ordering::SeqCst);
+        STATUS_NOTIFIER.notify_one();
     }};
 
-    ($pending_counter: ident, $status: ident, $e: expr) => {
-        deff!($pending_counter, $status, $e, ())
+    ($e: expr) => {
+        deff!($e, ())
     };
 }
+/// Number of pending actions handled by the event loop.
+/// 0: going to stop, 1..N: number of pending actions in background + 1
+static PENDING_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
+/// Event loop status.
+/// 0: running, 1: stop requested, 2: going to stop
+static STATUS: AtomicU32 = AtomicU32::new(0);
+
+/// Notify that the status might have been updated.
+static STATUS_NOTIFIER: Notify = Notify::const_new();
+
+/// Balance between synchronous notification and asynchronous handling by the
+/// event loop.
 static SYNC_ASYNC_BALANCE: AtomicU32 = AtomicU32::new(0);
 
 /// The following mutext is supposed to constain the execution
@@ -141,36 +142,19 @@ pub fn get_hold() -> &'static Mutex<()> {
 }
 
 async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
-    // 0: going to stop, 1..N: number of pending actions in background + 1
-    let pending_counter = Arc::new(AtomicUsize::new(1));
-    // 0: running, 1: stop requested, 2: going to stop
-    let status = Arc::new(AtomicU32::new(0));
-
     while let Some(action) = receiver.recv().await {
-        let pending_counter = pending_counter.clone();
-        let status = status.clone();
         tokio::spawn(async move {
             // resolution.
             match action {
-                Action::AccessFile(a) => deff!(pending_counter, status, exec_access(a)),
-                Action::AccessFileWithMode(a) => {
-                    deff!(pending_counter, status, exec_access_with_mode(a))
-                }
+                Action::AccessFile(a) => deff!(exec_access(a)),
+                Action::AccessFileWithMode(a) => deff!(exec_access_with_mode(a)),
                 Action::CloseWSFile(file, callbacks, context, pending) => {
-                    deff!(
-                        pending_counter,
-                        status,
-                        exec_close(file, callbacks, context, pending)
-                    )
+                    deff!(exec_close(file, callbacks, context, pending))
                 }
-                Action::CreateWSFile(path, ws_file) => {
-                    deff!(pending_counter, status, exec_create_file(path, ws_file))
-                }
-                Action::OpenFile(a) => deff!(pending_counter, status, exec_open(a)),
+                Action::CreateWSFile(path, ws_file) => deff!(exec_create_file(path, ws_file)),
+                Action::OpenFile(a) => deff!(exec_open(a)),
                 Action::SetTimeout(a) => {
                     deff!(
-                        pending_counter,
-                        status,
                         exec_timeout(a),
                         // count == 0 signify that the event loop will
                         // shutdown very soon. We can suspect that the
@@ -184,38 +168,44 @@ async fn running_loop(mut receiver: UnboundedReceiver<Action>) {
                     )
                 }
                 Action::WriteInWSFile(ws_file, value, pending) => {
-                    deff!(
-                        pending_counter,
-                        status,
-                        exec_write_str(ws_file, value, pending)
-                    )
+                    deff!(exec_write_str(ws_file, value, pending))
                 }
-                Action::Stop(sender) => {
-                    status.swap(1, Ordering::SeqCst);
-                    SYNC_ASYNC_BALANCE.fetch_sub(1, Ordering::SeqCst);
-                    // TODO: spawn that and wait with tokio tools!!
-                    std::thread::spawn(move || loop {
-                        // Note: there is maybe an issue here if tokio spaw the
-                        // end before all the other futures in a small script.
-                        if SYNC_ASYNC_BALANCE.load(Ordering::SeqCst) > 0 {
-                            wait(&*status, 1);
-                        } else {
-                            if pending_counter
-                                .compare_exchange(1, 0, Ordering::SeqCst, Ordering::Acquire)
-                                .is_err()
-                            {
-                                wait(&*status, 1);
-                            }
-                            if pending_counter.load(Ordering::SeqCst) == 0 {
-                                sender.send(()).unwrap();
-                                return;
-                            }
-                        }
-                    });
-                }
+                Action::Stop(sender) => exec_stop(sender),
             }
         });
     }
+}
+
+/// Require the event loop to stop. It is called for the first time after the
+/// evaluation of all the given Javascript (including required files). In
+/// classical nodejs implementation, I would say that it is called after the
+/// first `tick`.
+pub fn exec_stop(sender: Sender<()>) {
+    STATUS.swap(1, Ordering::SeqCst);
+    SYNC_ASYNC_BALANCE.fetch_sub(1, Ordering::SeqCst);
+    tokio::spawn(async move {
+        // Note: there is maybe an issue here if tokio spaw the
+        // end before all the other futures in a small script.
+        if SYNC_ASYNC_BALANCE.load(Ordering::SeqCst) > 0 {
+            STATUS_NOTIFIER.notified().await;
+        } else {
+            if PENDING_COUNTER
+                .compare_exchange(1, 0, Ordering::SeqCst, Ordering::Acquire)
+                .is_err()
+            {
+                STATUS_NOTIFIER.notified().await;
+            }
+            if PENDING_COUNTER.load(Ordering::SeqCst) == 0 {
+                sender.send(()).unwrap();
+                return;
+            }
+        }
+        // Retry, it's like using a loop but a loop would give
+        // an higher priority to the current thread. Sending a
+        // new action increase the probability to retry only
+        // when all other pending actions have been finished.
+        append(Action::Stop(sender))
+    });
 }
 
 pub fn append(action: Action) {
