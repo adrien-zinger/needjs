@@ -13,7 +13,9 @@ use tokio::sync::{
 
 use crate::{
     fs_promise::*,
-    fs_write_stream::{exec_close, exec_create_file, exec_write_str, WSFile, WriteStreamCallbacks},
+    fs_write_stream::{
+        exec_close, exec_create_file, exec_write_str, FsWriteStreamCallbacks, WSFile,
+    },
     timeout_api::{exec_timeout, TimeoutAction},
 };
 
@@ -43,7 +45,7 @@ pub enum Action {
     /// `writer.close()`
     CloseWSFile(
         Arc<Mutex<WSFile>>,
-        Arc<std::sync::Mutex<WriteStreamCallbacks>>,
+        Arc<std::sync::Mutex<FsWriteStreamCallbacks>>,
         JSContext,
         Arc<AtomicU32>,
     ),

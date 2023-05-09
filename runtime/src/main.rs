@@ -10,6 +10,7 @@ mod fs_promise;
 mod fs_write_stream;
 mod modules;
 mod timeout_api;
+mod util;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() {

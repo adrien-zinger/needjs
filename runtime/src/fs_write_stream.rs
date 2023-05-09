@@ -19,12 +19,12 @@ pub enum WSFile {
     Closed,
 }
 
-pub struct WriteStream {
+pub struct FsWriteStream {
     /// Protected pointer on a WSFile.
     ///
     /// Note: The pointer to WSFile::File is set asynchronously.
     file: Arc<Mutex<WSFile>>,
-    callbacks: Arc<std::sync::Mutex<WriteStreamCallbacks>>,
+    callbacks: Arc<std::sync::Mutex<FsWriteStreamCallbacks>>,
     pending: Arc<AtomicU32>,
 }
 
@@ -45,7 +45,7 @@ pub struct WriteStream {
 // }
 
 #[derive(Default)]
-pub struct WriteStreamCallbacks {
+pub struct FsWriteStreamCallbacks {
     /// On close callback.
     on_close: Option<JSObject<JSProtected>>,
     /// On finish callback.
@@ -53,7 +53,7 @@ pub struct WriteStreamCallbacks {
 }
 
 /// Get WriteStreamClass
-fn get_write_stream_class() -> &'static JSClass {
+pub fn get_fs_write_stream_class() -> &'static JSClass {
     maybe_static!(JSClass, || JSClass::create(
         "WriteStream",
         None,
@@ -91,7 +91,7 @@ pub async fn exec_write_str(ws_file: Arc<Mutex<WSFile>>, value: String, pending:
 }
 
 async fn call_close_callbacks(
-    callbacks: Arc<std::sync::Mutex<WriteStreamCallbacks>>,
+    callbacks: Arc<std::sync::Mutex<FsWriteStreamCallbacks>>,
     context: JSContext,
 ) {
     let _ = get_hold().lock().await;
@@ -106,7 +106,7 @@ async fn call_close_callbacks(
 
 pub async fn exec_close(
     ws_file: Arc<Mutex<WSFile>>,
-    callbacks: Arc<std::sync::Mutex<WriteStreamCallbacks>>,
+    callbacks: Arc<std::sync::Mutex<FsWriteStreamCallbacks>>,
     context: JSContext,
     pending: Arc<AtomicU32>,
 ) {
@@ -128,11 +128,11 @@ pub async fn exec_close(
     event_loop::append(Action::CloseWSFile(ws_file, callbacks, context, pending));
 }
 
-impl WriteStream {
+impl FsWriteStream {
     /// Create a new `WriteStream` JS object. Open file for writing. The file is
     /// created (if it does not exist) or truncated (if it exists).
     pub fn make(context: &JSContext, path: String) -> JSObject<JSObjectGenericClass> {
-        let mut object = get_write_stream_class().make_object(context);
+        let mut object = get_fs_write_stream_class().make_object(context);
         let file = Arc::new(Mutex::new(WSFile::Waiting));
         event_loop::append(event_loop::Action::CreateWSFile(path, file.clone()));
         object
@@ -145,7 +145,7 @@ impl WriteStream {
             .set_property(context, "write", JSValue::callback(context, Some(write)))
             .unwrap();
         if object
-            .set_private_data(WriteStream {
+            .set_private_data(FsWriteStream {
                 file,
                 callbacks: Default::default(),
                 pending: Default::default(),
@@ -160,15 +160,15 @@ impl WriteStream {
     pub fn try_from_object<'a>(
         context: &JSContext,
         object: &mut JSObject,
-    ) -> Result<&'a mut WriteStream, JSValue> {
-        let object = object.try_as_mut_object_class(context, get_write_stream_class())?;
-        let ws: &mut WriteStream = unsafe { &mut *object.get_private_data().unwrap() };
+    ) -> Result<&'a mut FsWriteStream, JSValue> {
+        let object = object.try_as_mut_object_class(context, get_fs_write_stream_class())?;
+        let ws: &mut FsWriteStream = unsafe { &mut *object.get_private_data().unwrap() };
         Ok(ws)
     }
 
-    pub fn try_take_from_object(object: &mut JSObject) -> Result<Box<WriteStream>, JSValue> {
+    pub fn try_take_from_object(object: &mut JSObject) -> Result<Box<FsWriteStream>, JSValue> {
         let object = unsafe { object.as_mut_object_class_unchecked() };
-        let ws: Box<WriteStream> = unsafe { Box::from_raw(object.get_private_data().unwrap()) };
+        let ws: Box<FsWriteStream> = unsafe { Box::from_raw(object.get_private_data().unwrap()) };
         object
             .set_private_data(std::ptr::null_mut() as *mut ())
             .unwrap();
@@ -211,7 +211,7 @@ impl WriteStream {
 }
 
 pub unsafe extern "C" fn destructor(this: rusty_jsc::private::JSObjectRef) {
-    WriteStream::try_take_from_object(&mut JSObject::from(this)).unwrap();
+    FsWriteStream::try_take_from_object(&mut JSObject::from(this)).unwrap();
 }
 
 #[callback]
@@ -221,7 +221,7 @@ pub fn create_write_stream(
     _this: JSObject,
     arguments: &[JSValue],
 ) -> Result<JSValue, JSValue> {
-    Ok(WriteStream::make(
+    Ok(FsWriteStream::make(
         &context,
         arguments[0].to_js_string(&context).unwrap().to_string(),
     )
@@ -230,7 +230,7 @@ pub fn create_write_stream(
 
 #[callback]
 fn on(context: JSContext, _function: JSObject, mut this: JSObject, arguments: &[JSValue]) {
-    let ws = WriteStream::try_from_object(&context, &mut this).unwrap();
+    let ws = FsWriteStream::try_from_object(&context, &mut this).unwrap();
     ws.on(
         arguments[0].to_js_string(&context).unwrap().to_string(),
         arguments[1].to_owned().into_protected_object(&context),
@@ -239,7 +239,7 @@ fn on(context: JSContext, _function: JSObject, mut this: JSObject, arguments: &[
 
 #[callback]
 fn close(context: JSContext, _function: JSObject, mut this: JSObject, _arguments: &[JSValue]) {
-    let ws = WriteStream::try_from_object(&context, &mut this).unwrap();
+    let ws = FsWriteStream::try_from_object(&context, &mut this).unwrap();
     ws.close(context);
 }
 
@@ -273,7 +273,7 @@ fn write(
 ) -> Result<JSValue, JSValue> {
     match arguments.get(0) {
         Some(value) if value.is_string(&context) => {
-            let ws = WriteStream::try_from_object(&context, &mut this).unwrap();
+            let ws = FsWriteStream::try_from_object(&context, &mut this).unwrap();
             ws.write(value.to_js_string(&context).unwrap().to_string())
         }
         Some(_) => todo!("No implementation for other types than string"),
