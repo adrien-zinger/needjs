@@ -2,11 +2,9 @@ use maybe_static::maybe_static;
 use rusty_jsc::{JSClass, JSContext, JSObject, JSObjectGenericClass, JSValue};
 use rusty_jsc_macros::{callback, constructor};
 
-use crate::{
-    fs_write_stream::{get_fs_write_stream_class, FsWriteStream},
-    util::format_parser,
-};
+use crate::{fs_write_stream::get_fs_write_stream_class, util::format_parser};
 
+/*
 enum Output {
     FsWriteStream(FsWriteStream),
 }
@@ -19,6 +17,7 @@ struct Console {
 impl Console {
     fn log(&mut self, str: String) {}
 }
+*/
 
 #[callback]
 fn log(context: JSContext, _function: JSObject, _this: JSObject, arguments: &[JSValue]) {
