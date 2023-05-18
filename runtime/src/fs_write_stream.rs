@@ -19,6 +19,7 @@ pub enum WSFile {
     Closed,
 }
 
+#[derive(Clone)]
 pub struct FsWriteStream {
     /// Protected pointer on a WSFile.
     ///
@@ -200,7 +201,7 @@ impl FsWriteStream {
         ))
     }
 
-    fn write(&mut self, value: String) {
+    pub fn write(&mut self, value: String) {
         self.pending.fetch_add(1, Ordering::Release);
         event_loop::append(Action::WriteInWSFile(
             self.file.clone(),
