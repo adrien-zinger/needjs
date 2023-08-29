@@ -4,7 +4,7 @@ At the beginning of the project, we just had console.log(string) method accepted
 
 
 
-- [] new Console(stdout[, stderr][, ignoreErrors])
+- [x] new Console(stdout[, stderr][, ignoreErrors])      notes: ignoreErrors will be treated later with more content
 - [] new Console(options)
 - [] console.assert(value[, ...message])
 - [] console.clear()

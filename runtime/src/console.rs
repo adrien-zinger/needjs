@@ -18,7 +18,7 @@ struct Console {
 }
 
 impl Console {
-    fn make(context: &mut JSContext, stdout: Output, stderr: Output) -> JSValue {
+    fn make(context: &mut JSContext, stdout: Output, stderr: Output) -> JSObject {
         let is_default_log = matches!(stdout, Output::Default);
         let is_default_err = matches!(stderr, Output::Default);
         let has_private_data = !(is_default_log && is_default_err);
@@ -104,20 +104,47 @@ fn make(context: &JSContext) -> JSObject<JSObjectGenericClass> {
 }
 
 #[constructor]
-fn new_console(mut context: JSContext, _constructor: JSObject, arguments: Vec<JSValue>) -> JSValue {
-    if arguments.len() == 1 {
-        if let Ok(mut fs) = arguments[0].to_object_class(&context, get_fs_write_stream_class()) {
+fn new_console(
+    mut context: JSContext,
+    _constructor: JSObject,
+    arguments: Vec<JSValue>,
+) -> JSObject {
+    fn get_output(arg: &JSValue, context: &JSContext) -> Result<Output, &'static str> {
+        if let Ok(mut fs) = arg.to_object_class(context, get_fs_write_stream_class()) {
             // Make a clone of the content, will increment the ARC and protect from
             // an unexpected cleanup.
-            let stdout = unsafe { &*fs.get_private_data::<FsWriteStream>().unwrap() }.to_owned();
-            Console::make(&mut context, Output::FsWriteStream(stdout), Output::Default)
+            let out = unsafe { &*fs.get_private_data::<FsWriteStream>().unwrap() }.to_owned();
+            Ok(Output::FsWriteStream(out))
         } else {
-            panic!("unexpected argument"); // TODO: check error message
+            Err("oups")
         }
-    } else if arguments.len() == 2 {
-        todo!("Implement console with multiple arguments")
-    } else {
-        Console::make(&mut context, Output::Default, Output::Default)
+    }
+
+    match arguments.len() {
+        1 =>
+        // TODO: argument can be an object and it's the "option" case
+        {
+            if let Ok(output) = get_output(&arguments[0], &context) {
+                Console::make(&mut context, output, Output::Default)
+            } else {
+                panic!("unexpected argument"); // TODO: check error message
+            }
+        }
+        2 => match (
+            get_output(&arguments[0], &context),
+            get_output(&arguments[1], &context),
+        ) {
+            (Ok(out), Ok(err)) => Console::make(&mut context, out, err),
+            _ => panic!("unexpected argument"), // TODO: check error message
+        },
+        3 => match (
+            get_output(&arguments[0], &context),
+            get_output(&arguments[1], &context),
+        ) {
+            (Ok(out), Ok(err)) => Console::make(&mut context, out, err),
+            _ => panic!("unexpected argument"), // TODO: check error message
+        }, // TODO get the third argument that is used to catch underlying errors
+        _ => Console::make(&mut context, Output::Default, Output::Default),
     }
 }
 
@@ -138,6 +165,9 @@ pub fn init(context: &mut JSContext) {
             "error",
             JSValue::callback(context, Some(default_error)),
         )
+        .unwrap();
+    console
+        .set_property(context, "Console", make(context).into())
         .unwrap();
     global
         .set_property(context, "console", console.into())
