@@ -44,8 +44,16 @@ impl Console {
                 JSValue::callback(context, Some(default_error)),
             )
             .unwrap();
+            obj.set_property(
+                context,
+                "assert",
+                JSValue::callback(context, Some(default_assert)),
+            )
+            .unwrap();
         } else {
             obj.set_property(context, "error", JSValue::callback(context, Some(error)))
+                .unwrap();
+            obj.set_property(context, "assert", JSValue::callback(context, Some(assert)))
                 .unwrap();
         }
         obj.into()
@@ -81,17 +89,65 @@ fn default_error(context: JSContext, _function: JSObject, _this: JSObject, argum
 }
 
 #[callback]
+fn default_assert(context: JSContext, _function: JSObject, _this: JSObject, arguments: &[JSValue]) {
+    if arguments.is_empty() {
+        eprintln!("Assertion Failed");
+        return
+    }
+
+    if arguments[0].is_bool(&context) {
+        if !arguments[0].to_bool(&context) {
+            if arguments.len() > 1 {
+                eprintln!("Assertion Failed: {}", format_parser(&context, &arguments[1..]).unwrap().join(""));
+            } else {
+                eprintln!("Assertion Failed");
+            }
+        }
+    } else {
+        eprintln!("Assertion Failed: Expected boolean as value");
+    }
+}
+
+#[callback]
 fn log(context: JSContext, _function: JSObject, mut this: JSObject, arguments: &[JSValue]) {
     let console_class = unsafe { this.as_mut_object_class_unchecked() };
     let console = unsafe { &mut *console_class.get_private_data::<Console>().unwrap() };
-    console.log(format_parser(&context, arguments).unwrap().join(""));
+    console.log(format!("{}\n", format_parser(&context, arguments).unwrap().join("")));
 }
 
 #[callback]
 fn error(context: JSContext, _function: JSObject, mut this: JSObject, arguments: &[JSValue]) {
     let console_class = unsafe { this.as_mut_object_class_unchecked() };
     let console = unsafe { &mut *console_class.get_private_data::<Console>().unwrap() };
-    console.error(format_parser(&context, arguments).unwrap().join(""));
+    console.error(format!("{}\n", format_parser(&context, arguments).unwrap().join("")));
+}
+
+#[callback]
+fn assert(context: JSContext, _function: JSObject, mut this: JSObject, arguments: &[JSValue]) {
+
+    if arguments.is_empty() {
+        let console_class = unsafe { this.as_mut_object_class_unchecked() };
+        let console = unsafe { &mut *console_class.get_private_data::<Console>().unwrap() };
+        console.error("Assertion failed".to_string());
+        return
+    }
+
+    if arguments[0].is_bool(&context) {
+        if !arguments[0].to_bool(&context) {
+            let console_class = unsafe { this.as_mut_object_class_unchecked() };
+            let console = unsafe { &mut *console_class.get_private_data::<Console>().unwrap() };
+
+            if arguments.len() > 1 {
+                console.error(format!("Assertion failed: {}", format_parser(&context, &arguments[1..]).unwrap().join("")));
+            } else {
+                console.error("Assertion failed".to_string());
+            }
+        }
+    } else {
+        let console_class = unsafe { this.as_mut_object_class_unchecked() };
+        let console = unsafe { &mut *console_class.get_private_data::<Console>().unwrap() };
+        console.error("Assertion failed: Expected boolean as value".to_string());
+    }
 }
 
 fn make(context: &JSContext) -> JSObject<JSObjectGenericClass> {
@@ -164,6 +220,13 @@ pub fn init(context: &mut JSContext) {
             context,
             "error",
             JSValue::callback(context, Some(default_error)),
+        )
+        .unwrap();
+    console
+        .set_property(
+            context,
+            "assert",
+            JSValue::callback(context, Some(default_assert)),
         )
         .unwrap();
     console

@@ -6,7 +6,7 @@ At the beginning of the project, we just had console.log(string) method accepted
 
 - [x] new Console(stdout[, stderr][, ignoreErrors])      notes: ignoreErrors will be treated later with more content
 - [] new Console(options)
-- [] console.assert(value[, ...message])
+- [x] console.assert(value[, ...message])
 - [] console.clear()
 - [] console.count([label])
 - [] console.countReset([label])
